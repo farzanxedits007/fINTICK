@@ -1,7 +1,10 @@
 import axios from 'axios';
 import { User, Ticket, Customer, Vendor, CustomerLedgerEntry, VendorLedgerEntry, LedgerSummary, VendorLedgerSummary, PaginatedResponse, DashboardSummary, BankSummary } from '../types';
 
-const api = axios.create({ baseURL: '/api', headers: { 'Content-Type': 'application/json' } });
+const env: any = (import.meta as any).env;
+const baseURL = env.VITE_API_URL || (env.DEV ? '/api' : 'https://fazimentor.pythonanywhere.com/api');
+
+const api = axios.create({ baseURL, headers: { 'Content-Type': 'application/json' } });
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token');
