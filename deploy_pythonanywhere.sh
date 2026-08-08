@@ -26,7 +26,7 @@ echo "==> FinTick deploy for user: $USERNAME"
 # 1. Create virtualenv if missing
 if [ ! -d "$VENV_DIR" ]; then
   echo "==> Creating virtualenv at $VENV_DIR"
-  mkvirtualenv fintik --python=python3.12
+  python3.12 -m venv "$VENV_DIR"
 else
   echo "==> Virtualenv already exists: $VENV_DIR"
 fi
