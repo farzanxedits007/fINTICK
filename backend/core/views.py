@@ -10,6 +10,32 @@ from .models import User
 from .serializers import UserSerializer, LoginSerializer
 
 
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def version(request):
+    import os
+    from django.conf import settings
+    git_dir = os.path.join(settings.BASE_DIR, '.git')
+    commit = ''
+    try:
+        head_path = os.path.join(git_dir, 'HEAD')
+        with open(head_path) as f:
+            ref = f.read().strip()
+        if ref.startswith('ref:'):
+            ref = ref.split('ref:')[1].strip()
+            with open(os.path.join(git_dir, ref)) as f:
+                commit = f.read().strip()[:12]
+        else:
+            commit = ref[:12]
+    except Exception:
+        commit = ''
+    return Response({
+        'service': 'fintik-backend',
+        'commit': commit,
+        'revision': 'round2',
+    })
+
+
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
 

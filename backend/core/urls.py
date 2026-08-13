@@ -6,4 +6,5 @@ urlpatterns = [
     path('me/', views.CurrentUserView.as_view()),
     path('users/', views.UserListView.as_view()),
     path('dashboard/', views.dashboard_summary),
+    path('version/', views.version),
 ]
