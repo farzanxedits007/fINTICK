@@ -69,7 +69,8 @@ export default function TicketPostingPage() {
       setForm({ ...defaultForm });
       load();
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to post ticket');
+      const msg = err.response?.data?.error || err.response?.data?.detail || err.response?.status || err.message;
+      toast.error(`Failed to post ticket (${msg})`);
     } finally {
       setSubmitting(false);
     }
