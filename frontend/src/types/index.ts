@@ -50,10 +50,17 @@ export interface Ticket {
   pnr: string;
   flight_date: string | null;
   airline: string;
+  sector: string;
+  country: string;
+  visa_type: 'visit' | 'work' | 'student' | '';
+  package: 'star' | 'economy' | '';
+  stay_date: string | null;
+  makkah_hotel: string;
+  madina_hotel: string;
   vendor_cost_pkr: number;
   ticket_price_pkr: number;
   profit_pkr: number;
-  status: 'pending' | 'paid' | 'cancelled';
+  status: 'confirmed' | 'paid' | 'cancelled';
   created_by: string;
   created_by_name: string;
   created_at: string;
@@ -73,6 +80,19 @@ export interface CustomerLedgerEntry {
   description: string;
   status: 'outstanding' | 'paid';
   created_at: string;
+  voucher_no: string;
+  voucher_date: string | null;
+  voucher_status: string;
+  branch: string;
+  payment_method: 'bank' | 'cash' | '';
+  account: string | null;
+  account_name: string;
+  currency: 'PKR' | 'SAR';
+  exchange_rate: number;
+  amount_sar: number;
+  invoice_ref: string;
+  cash_flow: string;
+  advance_option: string;
 }
 
 export interface VendorLedgerEntry {
@@ -88,6 +108,19 @@ export interface VendorLedgerEntry {
   description: string;
   status: 'outstanding' | 'paid';
   created_at: string;
+  voucher_no: string;
+  voucher_date: string | null;
+  voucher_status: string;
+  branch: string;
+  payment_method: 'bank' | 'cash' | '';
+  account: string | null;
+  account_name: string;
+  currency: 'PKR' | 'SAR';
+  exchange_rate: number;
+  amount_sar: number;
+  invoice_ref: string;
+  cash_flow: string;
+  advance_option: string;
 }
 
 export interface LedgerSummary {
@@ -151,4 +184,29 @@ export interface BankTransaction {
 export interface BankSummary {
   account: BankAccount;
   transactions: BankTransaction[];
+}
+
+export interface CashAccount {
+  id: string;
+  name: string;
+  balance: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CashTransaction {
+  id: string;
+  account: string;
+  tx_type: 'deposit' | 'withdrawal';
+  amount_pkr: string;
+  description: string;
+  reference_model: string;
+  reference_id: string | null;
+  balance_after: string;
+  created_at: string;
+}
+
+export interface CashSummary {
+  account: CashAccount;
+  transactions: CashTransaction[];
 }

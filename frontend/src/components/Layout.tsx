@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useEffect } from 'react';
-import { LayoutDashboard, Ticket, BookOpen, Truck, Settings, Landmark, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Ticket, BookOpen, Truck, Settings, Landmark, Wallet, LogOut, Menu, X } from 'lucide-react';
 import { useState } from 'react';
 
 const nav = [
@@ -10,6 +10,7 @@ const nav = [
   { to: '/customer-ledger', icon: BookOpen, label: 'Customer Ledger' },
   { to: '/vendor-ledger', icon: Truck, label: 'Vendor Ledger' },
   { to: '/bank', icon: Landmark, label: 'Bank' },
+  { to: '/cash', icon: Wallet, label: 'Cash' },
   { to: '/admin', icon: Settings, label: 'Admin Panel' },
 ];
 

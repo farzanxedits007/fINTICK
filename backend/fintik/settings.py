@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     'customer_ledger',
     'vendor_ledger',
     'bank',
+    'cash',
 ]
 
 MIDDLEWARE = [

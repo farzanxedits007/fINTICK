@@ -6,8 +6,8 @@ def get_account():
     return account
 
 
-def deposit(amount, description, reference_model='', reference_id=None):
-    account = get_account()
+def deposit(amount, description, reference_model='', reference_id=None, account_id=None):
+    account = BankAccount.objects.get(pk=account_id) if account_id else get_account()
     account.balance += amount
     account.save(update_fields=['balance'])
     return BankTransaction.objects.create(
@@ -21,8 +21,8 @@ def deposit(amount, description, reference_model='', reference_id=None):
     )
 
 
-def withdraw(amount, description, reference_model='', reference_id=None):
-    account = get_account()
+def withdraw(amount, description, reference_model='', reference_id=None, account_id=None):
+    account = BankAccount.objects.get(pk=account_id) if account_id else get_account()
     account.balance -= amount
     account.save(update_fields=['balance'])
     return BankTransaction.objects.create(

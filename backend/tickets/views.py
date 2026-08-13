@@ -22,6 +22,9 @@ class TicketListView(generics.ListCreateAPIView):
         customer_id = self.request.query_params.get('customer_id')
         if customer_id:
             qs = qs.filter(customer_id=customer_id)
+        vendor_id = self.request.query_params.get('vendor_id')
+        if vendor_id:
+            qs = qs.filter(vendor_id=vendor_id)
         status = self.request.query_params.get('status')
         if status:
             qs = qs.filter(status=status)
@@ -29,6 +32,8 @@ class TicketListView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         ticket = serializer.save(created_by=self.request.user)
+        if ticket.status == 'cancelled':
+            return
         from customer_ledger.services import post_to_customer_ledger
         from vendor_ledger.services import post_to_vendor_ledger
         post_to_customer_ledger(ticket)

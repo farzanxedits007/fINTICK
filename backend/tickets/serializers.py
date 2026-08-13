@@ -13,6 +13,8 @@ class TicketSerializer(serializers.ModelSerializer):
             'id', 'ticket_type', 'customer', 'customer_name', 'vendor', 'vendor_name',
             'passenger_name', 'passport_no', 'date_of_birth',
             'passport_expiry', 'gender', 'pnr', 'flight_date', 'airline',
+            'sector', 'country', 'visa_type', 'package', 'stay_date',
+            'makkah_hotel', 'madina_hotel',
             'vendor_cost_pkr', 'ticket_price_pkr', 'profit_pkr',
             'status', 'created_by', 'created_by_name',
             'created_at', 'updated_at',

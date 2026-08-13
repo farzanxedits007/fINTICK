@@ -1,19 +1,21 @@
 import { useEffect, useState } from 'react';
-import { customerAPI, vendorAPI } from '../services/api';
-import { Customer, Vendor } from '../types';
+import { customerAPI, vendorAPI, bankAPI } from '../services/api';
+import { Customer, Vendor, BankAccount } from '../types';
 import toast from 'react-hot-toast';
-import { Plus, X, Trash2, Pencil, Search, Users, Building2 } from 'lucide-react';
+import { Plus, X, Trash2, Pencil, Search, Users, Building2, Landmark } from 'lucide-react';
 
 export default function AdminPanelPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [banks, setBanks] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'customers' | 'vendors'>('customers');
+  const [tab, setTab] = useState<'customers' | 'vendors' | 'banks'>('customers');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [editing, setEditing] = useState<Customer | Vendor | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [bankName, setBankName] = useState('');
 
   const [custForm, setCustForm] = useState({ name: '', phone: '', email: '', city: '', address: '', notes: '' });
   const [vendForm, setVendForm] = useState({ name: '', company: '', phone: '', email: '', city: '', address: '', notes: '' });
@@ -21,9 +23,10 @@ export default function AdminPanelPage() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([customerAPI.list(), vendorAPI.list()]).then(([c, v]) => {
+    Promise.all([customerAPI.list(), vendorAPI.list(), bankAPI.list()]).then(([c, v, b]) => {
       setCustomers(c.data.results || []);
       setVendors(v.data.results || []);
+      setBanks(b.data || []);
       setLoading(false);
     });
   };
@@ -58,6 +61,31 @@ export default function AdminPanelPage() {
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed');
     } finally { setSubmitting(false); }
+  };
+
+  const handleCreateBank = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bankName.trim()) { toast.error('Account name is required'); return; }
+    setSubmitting(true);
+    try {
+      await bankAPI.create({ name: bankName.trim() });
+      toast.success('Bank account created!');
+      setBankName('');
+      load();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed');
+    } finally { setSubmitting(false); }
+  };
+
+  const handleDeleteBank = async (id: string) => {
+    if (!confirm('Delete this bank account? Accounts with transactions cannot be deleted.')) return;
+    try {
+      await bankAPI.delete(id);
+      toast.success('Bank account deleted');
+      load();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Failed — account may have transactions');
+    }
   };
 
   const handleEdit = async (e: React.FormEvent) => {
@@ -125,9 +153,11 @@ export default function AdminPanelPage() {
           <h2 className="text-2xl font-bold text-gray-900">Admin Panel</h2>
           <p className="text-sm text-gray-500 mt-1">Manage customer and vendor accounts</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors">
-          <Plus size={18} /> New {tab === 'customers' ? 'Customer' : 'Vendor'}
-        </button>
+        {tab !== 'banks' && (
+          <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors">
+            <Plus size={18} /> New {tab === 'customers' ? 'Customer' : 'Vendor'}
+          </button>
+        )}
       </div>
 
       <div className="flex gap-4 mb-6">
@@ -139,16 +169,57 @@ export default function AdminPanelPage() {
           className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition-colors ${tab === 'vendors' ? 'bg-amber-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
           <Building2 size={18} /> Vendors ({vendors.length})
         </button>
+        <button onClick={() => { setTab('banks'); setSearch(''); }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition-colors ${tab === 'banks' ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+          <Landmark size={18} /> Bank Accounts ({banks.length})
+        </button>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
-        <div className="relative max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder={`Search ${tab}...`} value={search} onChange={(e) => setSearch(e.target.value)} />
+      {tab === 'banks' && (
+        <div className="mb-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+            <form onSubmit={handleCreateBank} className="flex gap-3">
+              <input className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder="New bank account name (e.g. HBL Main)" value={bankName} onChange={(e) => setBankName(e.target.value)} required />
+              <button type="submit" disabled={submitting} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50">
+                <Plus size={16} /> {submitting ? 'Adding...' : 'Add Account'}
+              </button>
+            </form>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {banks.length === 0 && (
+              <div className="col-span-full text-center py-12 text-gray-400">No bank accounts yet</div>
+            )}
+            {banks.map((b) => (
+              <div key={b.id} className="bg-white rounded-xl border border-gray-200 p-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <Landmark size={20} className="text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-gray-900">{b.name}</p>
+                    <p className="text-sm text-emerald-600 font-medium">PKR {Number(b.balance).toLocaleString('en-PK', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                </div>
+                <button onClick={() => handleDeleteBank(b.id)} className="text-gray-400 hover:text-red-600 p-1 transition-colors" title="Delete account">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+      {tab !== 'banks' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
+          <div className="relative max-w-sm">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder={`Search ${tab}...`} value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+        </div>
+      )}
+
+      {tab !== 'banks' && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
@@ -201,6 +272,7 @@ export default function AdminPanelPage() {
           </tbody>
         </table>
       </div>
+      )}
 
       {/* Create Modal */}
       {showCreate && (

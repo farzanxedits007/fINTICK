@@ -6,6 +6,16 @@ import { Plus, Search, Trash2, Eye, X } from 'lucide-react';
 
 const fmt = (v: number) => `PKR ${Number(v).toLocaleString('en-PK', { minimumFractionDigits: 2 })}`;
 
+const typeLabel: Record<string, string> = { flight: 'Flight', visa: 'Visa', umrah: 'Umrah' };
+
+const defaultForm = {
+  customer: '', vendor: '',
+  ticket_type: 'flight', passenger_name: '', passport_no: '', date_of_birth: '', passport_expiry: '',
+  gender: 'male', pnr: '', flight_date: '', airline: '', sector: '',
+  country: '', visa_type: '', package: '', stay_date: '', makkah_hotel: '', madina_hotel: '',
+  vendor_cost_pkr: '', ticket_price_pkr: '', status: 'confirmed',
+};
+
 export default function TicketPostingPage() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -16,12 +26,7 @@ export default function TicketPostingPage() {
   const [detail, setDetail] = useState<Ticket | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [form, setForm] = useState({
-    customer: '', vendor: '',
-    ticket_type: 'flight', passenger_name: '', passport_no: '', date_of_birth: '', passport_expiry: '',
-    gender: 'male', pnr: '', flight_date: '', airline: '',
-    vendor_cost_pkr: '', ticket_price_pkr: '',
-  });
+  const [form, setForm] = useState({ ...defaultForm });
 
   const profit = (Number(form.ticket_price_pkr) || 0) - (Number(form.vendor_cost_pkr) || 0);
 
@@ -49,15 +54,19 @@ export default function TicketPostingPage() {
         vendor: form.vendor || null,
         ticket_type: form.ticket_type as 'flight' | 'visa' | 'umrah',
         gender: form.gender as 'male' | 'female' | 'other',
+        visa_type: form.visa_type as 'visit' | 'work' | 'student',
+        package: form.package as 'star' | 'economy',
+        status: form.status as 'confirmed' | 'cancelled',
         vendor_cost_pkr: Number(form.vendor_cost_pkr),
         ticket_price_pkr: Number(form.ticket_price_pkr),
         date_of_birth: form.date_of_birth || null,
         passport_expiry: form.passport_expiry || null,
         flight_date: form.flight_date || null,
+        stay_date: form.stay_date || null,
       });
       toast.success('Ticket posted & ledgers updated!');
       setShowForm(false);
-      setForm({ customer: '', vendor: '', ticket_type: 'flight', passenger_name: '', passport_no: '', date_of_birth: '', passport_expiry: '', gender: 'male', pnr: '', flight_date: '', airline: '', vendor_cost_pkr: '', ticket_price_pkr: '' });
+      setForm({ ...defaultForm });
       load();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to post ticket');
@@ -66,19 +75,26 @@ export default function TicketPostingPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this ticket?')) return;
-    try { await ticketAPI.delete(id); toast.success('Deleted'); load(); }
+  const handleVoid = async (id: string) => {
+    if (!confirm('Void this ticket? This reverses its ledger entries.')) return;
+    try { await ticketAPI.delete(id); toast.success('Ticket voided'); load(); }
     catch { toast.error('Failed'); }
   };
 
   const statusBadge = (s: string) => {
-    const c: Record<string, string> = { pending: 'bg-amber-100 text-amber-800', paid: 'bg-emerald-100 text-emerald-800', cancelled: 'bg-red-100 text-red-800' };
-    return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${c[s] || c.pending}`}>{s}</span>;
+    const c: Record<string, string> = { confirmed: 'bg-blue-100 text-blue-800', paid: 'bg-emerald-100 text-emerald-800', cancelled: 'bg-red-100 text-red-800' };
+    return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${c[s] || c.confirmed}`}>{s}</span>;
   };
 
   const selectedCustomerObj = customers.find((c) => c.id === form.customer) || null;
   const selectedVendorObj = vendors.find((v) => v.id === form.vendor) || null;
+
+  const field = (label: string, name: string, props: any = {}) => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={(form as any)[name]} onChange={(e) => setForm({ ...form, [name]: e.target.value })} {...props} />
+    </div>
+  );
 
   return (
     <div>
@@ -88,7 +104,7 @@ export default function TicketPostingPage() {
           <p className="text-sm text-gray-500 mt-1">Post tickets and auto-update ledgers</p>
         </div>
         <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2.5 rounded-lg font-medium hover:bg-emerald-700 transition-colors">
-          <Plus size={18} /> New Ticket
+          <Plus size={18} /> Post New Ticket
         </button>
       </div>
 
@@ -107,7 +123,7 @@ export default function TicketPostingPage() {
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Customer</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vendor</th>
-              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">PNR</th>
+              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Ref</th>
               <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Vendor Cost</th>
               <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Ticket Price</th>
               <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Profit</th>
@@ -125,12 +141,12 @@ export default function TicketPostingPage() {
                 <td className="px-5 py-3 font-medium text-sm">{t.passenger_name}</td>
                 <td className="px-5 py-3 text-sm">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize bg-purple-100 text-purple-800">
-                    {t.ticket_type === 'flight' ? 'Flight' : t.ticket_type}
+                    {typeLabel[t.ticket_type] || t.ticket_type}
                   </span>
                 </td>
                 <td className="px-5 py-3 text-sm text-gray-600">{t.customer_name || '—'}</td>
                 <td className="px-5 py-3 text-sm text-gray-600">{t.vendor_name || '—'}</td>
-                <td className="px-5 py-3 text-sm font-mono text-gray-600">{t.pnr || '—'}</td>
+                <td className="px-5 py-3 text-sm font-mono text-gray-600">{t.pnr || t.visa_type || t.package || '—'}</td>
                 <td className="px-5 py-3 text-sm text-right text-red-600">{fmt(t.vendor_cost_pkr)}</td>
                 <td className="px-5 py-3 text-sm text-right text-emerald-600 font-medium">{fmt(t.ticket_price_pkr)}</td>
                 <td className={`px-5 py-3 text-sm text-right font-semibold ${t.profit_pkr >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
@@ -139,8 +155,8 @@ export default function TicketPostingPage() {
                 <td className="px-5 py-3">{statusBadge(t.status)}</td>
                 <td className="px-5 py-3">
                   <div className="flex justify-center gap-1">
-                    <button onClick={() => setDetail(t)} className="text-gray-400 hover:text-blue-600 p-1"><Eye size={16} /></button>
-                    <button onClick={() => handleDelete(t.id)} className="text-gray-400 hover:text-red-600 p-1"><Trash2 size={16} /></button>
+                    <button onClick={() => setDetail(t)} className="text-gray-400 hover:text-blue-600 p-1" title="View"><Eye size={16} /></button>
+                    <button onClick={() => handleVoid(t.id)} className="text-gray-400 hover:text-red-600 p-1" title="Void"><Trash2 size={16} /></button>
                   </div>
                 </td>
               </tr>
@@ -211,7 +227,7 @@ export default function TicketPostingPage() {
               </div>
 
               <div className="border-t border-gray-200 pt-5">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Passenger Details</h4>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Ticket Details</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Ticket Type *</label>
@@ -225,18 +241,46 @@ export default function TicketPostingPage() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Passenger Name *</label>
                     <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.passenger_name} onChange={(e) => setForm({ ...form, passenger_name: e.target.value })} required />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Passport No *</label>
-                    <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.passport_no} onChange={(e) => setForm({ ...form, passport_no: e.target.value })} required />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-                    <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Passport Expiry</label>
-                    <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.passport_expiry} onChange={(e) => setForm({ ...form, passport_expiry: e.target.value })} />
-                  </div>
+                  {form.ticket_type === 'flight' && (
+                    <>
+                      {field('Passport Number *', 'passport_no', { required: true })}
+                      {field('PNR', 'pnr', { placeholder: 'Booking reference' })}
+                      {field('Airline', 'airline', { placeholder: 'e.g. PIA, Airblue' })}
+                      {field('Travel Date', 'flight_date', { type: 'date' })}
+                      {field('Sector', 'sector', { placeholder: 'e.g. KHI → JED' })}
+                    </>
+                  )}
+                  {form.ticket_type === 'visa' && (
+                    <>
+                      {field('Country Name *', 'country', { required: true, placeholder: 'e.g. Saudi Arabia' })}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Visa Type *</label>
+                        <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.visa_type} onChange={(e) => setForm({ ...form, visa_type: e.target.value })} required>
+                          <option value="">— Select Visa Type —</option>
+                          <option value="visit">Visit</option>
+                          <option value="work">Work</option>
+                          <option value="student">Student</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+                  {form.ticket_type === 'umrah' && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Package *</label>
+                        <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.package} onChange={(e) => setForm({ ...form, package: e.target.value })} required>
+                          <option value="">— Select Package —</option>
+                          <option value="star">Star</option>
+                          <option value="economy">Economy</option>
+                        </select>
+                      </div>
+                      {field('Stay Date', 'stay_date', { type: 'date' })}
+                      {field('Makkah Hotel', 'makkah_hotel')}
+                      {field('Madina Hotel', 'madina_hotel')}
+                    </>
+                  )}
+                  {field('Date of Birth', 'date_of_birth', { type: 'date' })}
+                  {field('Passport Expiry', 'passport_expiry', { type: 'date' })}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Gender</label>
                     <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value })}>
@@ -246,16 +290,11 @@ export default function TicketPostingPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">PNR</label>
-                    <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.pnr} onChange={(e) => setForm({ ...form, pnr: e.target.value })} placeholder="Booking reference" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Flight Date</label>
-                    <input type="date" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.flight_date} onChange={(e) => setForm({ ...form, flight_date: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Airline</label>
-                    <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.airline} onChange={(e) => setForm({ ...form, airline: e.target.value })} placeholder="e.g. PIA, Airblue" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} required>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
                   </div>
                 </div>
               </div>
@@ -303,16 +342,35 @@ export default function TicketPostingPage() {
             </div>
             <div className="space-y-2 text-sm">
               <div className="grid grid-cols-2 gap-2">
-                <span className="text-gray-500">Type:</span><span className="font-medium capitalize">{detail.ticket_type === 'flight' ? 'Flight Ticket' : detail.ticket_type}</span>
+                <span className="text-gray-500">Type:</span><span className="font-medium capitalize">{typeLabel[detail.ticket_type] || detail.ticket_type}</span>
                 <span className="text-gray-500">Customer:</span><span className="font-medium">{detail.customer_name || '—'}</span>
                 <span className="text-gray-500">Vendor:</span><span className="font-medium">{detail.vendor_name || '—'}</span>
-                <span className="text-gray-500">Passport:</span><span className="font-medium">{detail.passport_no}</span>
+                <span className="text-gray-500">Passport:</span><span className="font-medium">{detail.passport_no || '—'}</span>
                 <span className="text-gray-500">Gender:</span><span className="capitalize">{detail.gender}</span>
                 <span className="text-gray-500">DOB:</span><span>{detail.date_of_birth || '—'}</span>
                 <span className="text-gray-500">Expiry:</span><span>{detail.passport_expiry || '—'}</span>
-                <span className="text-gray-500">PNR:</span><span className="font-mono">{detail.pnr || '—'}</span>
-                <span className="text-gray-500">Airline:</span><span>{detail.airline || '—'}</span>
-                <span className="text-gray-500">Flight Date:</span><span>{detail.flight_date || '—'}</span>
+                {detail.ticket_type === 'flight' && (
+                  <>
+                    <span className="text-gray-500">PNR:</span><span className="font-mono">{detail.pnr || '—'}</span>
+                    <span className="text-gray-500">Airline:</span><span>{detail.airline || '—'}</span>
+                    <span className="text-gray-500">Travel Date:</span><span>{detail.flight_date || '—'}</span>
+                    <span className="text-gray-500">Sector:</span><span>{detail.sector || '—'}</span>
+                  </>
+                )}
+                {detail.ticket_type === 'visa' && (
+                  <>
+                    <span className="text-gray-500">Country:</span><span>{detail.country || '—'}</span>
+                    <span className="text-gray-500">Visa Type:</span><span className="capitalize">{detail.visa_type || '—'}</span>
+                  </>
+                )}
+                {detail.ticket_type === 'umrah' && (
+                  <>
+                    <span className="text-gray-500">Package:</span><span className="capitalize">{detail.package || '—'}</span>
+                    <span className="text-gray-500">Stay Date:</span><span>{detail.stay_date || '—'}</span>
+                    <span className="text-gray-500">Makkah Hotel:</span><span>{detail.makkah_hotel || '—'}</span>
+                    <span className="text-gray-500">Madina Hotel:</span><span>{detail.madina_hotel || '—'}</span>
+                  </>
+                )}
                 <span className="text-gray-500">Status:</span><span>{detail.status}</span>
               </div>
               <hr className="my-3" />

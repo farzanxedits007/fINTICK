@@ -3,7 +3,7 @@ from django.db.models import Sum, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from django.views import View
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -20,7 +20,14 @@ def get_account():
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def bank_summary(request):
-    account = get_account()
+    account_id = request.query_params.get('account_id')
+    if account_id:
+        try:
+            account = BankAccount.objects.get(pk=account_id)
+        except BankAccount.DoesNotExist:
+            return Response({'error': 'Account not found'}, status=status.HTTP_404_NOT_FOUND)
+    else:
+        account = get_account()
     recent = BankTransaction.objects.filter(account=account)[:50]
     return Response({
         'account': BankAccountSerializer(account).data,
@@ -28,11 +35,34 @@ def bank_summary(request):
     })
 
 
+class BankAccountListView(generics.ListCreateAPIView):
+    serializer_class = BankAccountSerializer
+    queryset = BankAccount.objects.all().order_by('created_at')
+
+
+class BankAccountDeleteView(generics.DestroyAPIView):
+    serializer_class = BankAccountSerializer
+    queryset = BankAccount.objects.all()
+
+    def destroy(self, request, *args, **kwargs):
+        account = self.get_object()
+        if account.transactions.exists():
+            return Response({'error': 'Cannot delete an account that has transactions'}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+
 class BankTransactionListView(generics.ListAPIView):
     serializer_class = BankTransactionSerializer
 
     def get_queryset(self):
-        account = get_account()
+        account_id = self.request.query_params.get('account_id')
+        if account_id:
+            try:
+                account = BankAccount.objects.get(pk=account_id)
+            except BankAccount.DoesNotExist:
+                return BankTransaction.objects.none()
+        else:
+            account = get_account()
         return BankTransaction.objects.filter(account=account)
 
 

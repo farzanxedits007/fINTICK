@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { vendorLedgerAPI, vendorAPI } from '../services/api';
-import { Vendor, VendorLedgerEntry, VendorLedgerSummary } from '../types';
+import { vendorLedgerAPI, vendorAPI, ticketAPI, VoucherPayload } from '../services/api';
+import { Vendor, VendorLedgerEntry, VendorLedgerSummary, Ticket } from '../types';
+import PaymentVoucherModal from '../components/PaymentVoucherModal';
 import toast from 'react-hot-toast';
 import { Search, Plus, X, Building2, ArrowLeft, Phone, MapPin, Trash2, Download, FileText, FileDown } from 'lucide-react';
 
@@ -9,6 +10,7 @@ const fmt = (v: number | string) => `PKR ${Number(v).toLocaleString('en-PK', { m
 export default function VendorLedgerPage() {
   const [entries, setEntries] = useState<VendorLedgerEntry[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [pendingTickets, setPendingTickets] = useState<Ticket[]>([]);
   const [summary, setSummary] = useState<VendorLedgerSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -19,7 +21,6 @@ export default function VendorLedgerPage() {
   const [showEditVendor, setShowEditVendor] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [payForm, setPayForm] = useState({ passenger_name: '', amount: '', description: '', payment_method: 'bank' });
   const [vendorForm, setVendorForm] = useState({ name: '', company: '', phone: '', email: '', city: '', address: '', notes: '' });
   const [editForm, setEditForm] = useState({ name: '', company: '', phone: '', email: '', city: '', address: '', notes: '' });
 
@@ -33,14 +34,20 @@ export default function VendorLedgerPage() {
     const summaryParams: Record<string, any> = {};
     if (selectedVendor) summaryParams.vendor_id = selectedVendor.id;
 
+    const ticketPromise = selectedVendor
+      ? ticketAPI.list({ vendor_id: selectedVendor.id, status: 'confirmed' }).then(({ data }) => data.results || [])
+      : Promise.resolve<Ticket[]>([]);
+
     Promise.all([
       vendorLedgerAPI.list(params),
       vendorLedgerAPI.summary(summaryParams),
       vendorAPI.list(),
-    ]).then(([ledger, sum, vend]) => {
+      ticketPromise,
+    ]).then(([ledger, sum, vend, tickets]) => {
       setEntries(ledger.data.results || []);
       setSummary(sum.data);
       setVendors(vend.data.results || []);
+      setPendingTickets(tickets);
       setLoading(false);
     });
   }, [search, statusFilter, selectedVendor]);
@@ -102,25 +109,18 @@ export default function VendorLedgerPage() {
     }
   };
 
-  const handlePayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!payForm.passenger_name.trim()) { toast.error('Passenger name is required'); return; }
-    if (!payForm.amount || Number(payForm.amount) <= 0) { toast.error('Enter a valid amount'); return; }
+  const handlePayment = async (payload: VoucherPayload) => {
     setSubmitting(true);
     try {
       await vendorLedgerAPI.addPayment({
-        amount: Number(payForm.amount),
-        passenger_name: payForm.passenger_name.trim(),
-        description: payForm.description.trim() || 'Payment made to vendor',
+        ...payload,
         vendor_id: selectedVendor?.id || undefined,
-        payment_method: payForm.payment_method as 'bank' | 'cash',
       });
-      toast.success('Payment recorded!');
+      toast.success('Voucher posted!');
       setShowPayment(false);
-      setPayForm({ passenger_name: '', amount: '', description: '', payment_method: 'bank' });
       load();
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Failed to record payment');
+      toast.error(err.response?.data?.error || 'Failed to post voucher');
     } finally {
       setSubmitting(false);
     }
@@ -310,6 +310,7 @@ export default function VendorLedgerPage() {
             <tr className="border-b border-gray-200 bg-gray-50">
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Date</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Passenger</th>
+              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Voucher No</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">PNR</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
               <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Amount (PKR)</th>
@@ -320,13 +321,14 @@ export default function VendorLedgerPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={8} className="text-center py-12 text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-gray-400">Loading...</td></tr>
             ) : entries.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-12 text-gray-400">No entries found</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-gray-400">No entries found</td></tr>
             ) : entries.map((e) => (
               <tr key={e.id} className="hover:bg-gray-50">
                 <td className="px-5 py-3 text-sm text-gray-600">{new Date(e.created_at).toLocaleDateString()}</td>
                 <td className="px-5 py-3 text-sm font-medium">{e.passenger_name}</td>
+                <td className="px-5 py-3 text-sm font-mono text-gray-500">{e.voucher_no || '—'}</td>
                 <td className="px-5 py-3 text-sm font-mono text-gray-600">{e.ticket_ref || '—'}</td>
                 <td className="px-5 py-3">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${e.entry_type === 'credit' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
@@ -360,46 +362,16 @@ export default function VendorLedgerPage() {
         </table>
       </div>
 
-      {showPayment && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowPayment(false)}>
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-bold">Record Vendor Payment</h3>
-              <button onClick={() => setShowPayment(false)} className="text-gray-400 hover:text-gray-600"><X size={22} /></button>
-            </div>
-            <form onSubmit={handlePayment} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Passenger Name *</label>
-                <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Name on the ticket" value={payForm.passenger_name} onChange={(e) => setPayForm({ ...payForm, passenger_name: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method *</label>
-                <div className="flex gap-2">
-                  <label className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm font-medium transition-colors ${payForm.payment_method === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                    <input type="radio" name="payment_method" value="bank" checked={payForm.payment_method === 'bank'} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })} className="sr-only" />
-                    Bank
-                  </label>
-                  <label className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm font-medium transition-colors ${payForm.payment_method === 'cash' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
-                    <input type="radio" name="payment_method" value="cash" checked={payForm.payment_method === 'cash'} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })} className="sr-only" />
-                    Cash
-                  </label>
-                </div>
-                {payForm.payment_method === 'cash' && <p className="text-xs text-gray-400 mt-1">Cash paid — no bank withdrawal recorded.</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Amount (PKR) *</label>
-                <input type="number" step="0.01" min="0.01" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none text-lg" placeholder="0.00" value={payForm.amount} onChange={(e) => setPayForm({ ...payForm, amount: e.target.value })} required />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Payment made to vendor" value={payForm.description} onChange={(e) => setPayForm({ ...payForm, description: e.target.value })} />
-              </div>
-              <button type="submit" disabled={submitting} className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium text-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
-                {submitting ? 'Recording...' : 'Record Payment'}
-              </button>
-            </form>
-          </div>
-        </div>
+      {showPayment && selectedVendor && (
+        <PaymentVoucherModal
+          mode="make"
+          accountId={selectedVendor.id}
+          accountName={selectedVendor.name}
+          tickets={pendingTickets}
+          submitting={submitting}
+          onSubmit={handlePayment}
+          onClose={() => setShowPayment(false)}
+        />
       )}
 
       {showCreateVendor && (

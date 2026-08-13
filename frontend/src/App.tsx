@@ -9,6 +9,7 @@ import CustomerLedgerPage from './pages/CustomerLedgerPage';
 import VendorLedgerPage from './pages/VendorLedgerPage';
 import AdminPanelPage from './pages/AdminPanelPage';
 import BankPage from './pages/BankPage';
+import CashPage from './pages/CashPage';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const isAuth = useAuthStore((s) => s.isAuthenticated);
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="vendor-ledger" element={<VendorLedgerPage />} />
           <Route path="admin" element={<AdminPanelPage />} />
           <Route path="bank" element={<BankPage />} />
+          <Route path="cash" element={<CashPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -19,6 +19,20 @@ class VendorLedgerEntry(models.Model):
     amount_pkr = models.DecimalField(max_digits=12, decimal_places=2)
     description = models.CharField(max_length=500, blank=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.OUTSTANDING)
+
+    voucher_no = models.CharField(max_length=50, blank=True)
+    voucher_date = models.DateField(null=True, blank=True)
+    voucher_status = models.CharField(max_length=20, default='final')
+    branch = models.CharField(max_length=100, blank=True, default='Lahore')
+    payment_method = models.CharField(max_length=10, blank=True, default='')
+    account = models.ForeignKey('bank.BankAccount', on_delete=models.SET_NULL, null=True, blank=True, related_name='+')
+    currency = models.CharField(max_length=10, blank=True, default='')
+    exchange_rate = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    amount_sar = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    invoice_ref = models.CharField(max_length=100, blank=True)
+    cash_flow = models.CharField(max_length=50, blank=True, default='')
+    advance_option = models.CharField(max_length=100, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

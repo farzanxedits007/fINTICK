@@ -12,8 +12,8 @@ from rest_framework_simplejwt.authentication import JWTAuthentication
 from openpyxl import Workbook
 from .models import VendorLedgerEntry
 from .serializers import VendorLedgerEntrySerializer
-from bank.services import withdraw as bank_withdraw, reverse_by_reference
 from pdf_export import ledger_pdf, payment_slip_pdf
+from ledger_voucher import compute_pkr_amount, voucher_no_for, post_money, reverse_money
 
 
 class VendorLedgerListView(generics.ListAPIView):
@@ -67,15 +67,42 @@ def vendor_summary(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def add_vendor_payment(request):
+    from datetime import date as date_cls
+    from datetime import datetime
+
     amount = Decimal(str(request.data.get('amount', 0)))
     passenger_name = request.data.get('passenger_name', '').strip()
     description = request.data.get('description', 'Payment made')
     ticket_id = request.data.get('ticket_id')
     vendor_id = request.data.get('vendor_id')
-    payment_method = request.data.get('payment_method', 'bank')
 
+    payment_method = request.data.get('payment_method', 'bank')
     if payment_method not in ('bank', 'cash'):
         payment_method = 'bank'
+    account_id = request.data.get('account_id')
+    currency = (request.data.get('currency') or 'PKR').upper()
+    if currency not in ('PKR', 'SAR'):
+        currency = 'PKR'
+    exchange_rate = Decimal(str(request.data.get('exchange_rate') or 0))
+    amount_sar = Decimal(str(request.data.get('amount_sar') or 0))
+    branch = request.data.get('branch') or 'Lahore'
+    voucher_status = request.data.get('voucher_status') or 'final'
+    invoice_ref = request.data.get('invoice_ref', '')
+    cash_flow = request.data.get('cash_flow', 'Not Required')
+    advance_option = request.data.get('advance_option', '')
+    voucher_date = None
+    raw_date = request.data.get('voucher_date')
+    if raw_date:
+        try:
+            voucher_date = date_cls.fromisoformat(str(raw_date)[:10])
+        except ValueError:
+            try:
+                voucher_date = datetime.strptime(str(raw_date)[:10], '%d/%m/%Y').date()
+            except ValueError:
+                voucher_date = None
+
+    if currency == 'SAR':
+        amount = compute_pkr_amount('SAR', amount, amount_sar, exchange_rate)
 
     if amount <= 0:
         return Response({'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
@@ -107,10 +134,30 @@ def add_vendor_payment(request):
         amount_pkr=amount,
         description=description,
         status=VendorLedgerEntry.Status.PAID,
+        voucher_date=voucher_date,
+        voucher_status=voucher_status,
+        branch=branch,
+        payment_method=payment_method,
+        currency=currency if currency == 'SAR' else 'PKR',
+        exchange_rate=exchange_rate if currency == 'SAR' else Decimal('0'),
+        amount_sar=amount_sar if currency == 'SAR' else Decimal('0'),
+        invoice_ref=invoice_ref,
+        cash_flow=cash_flow,
+        advance_option=advance_option,
     )
 
-    if payment_method == 'bank':
-        bank_withdraw(amount, description or f'Payment to vendor for {passenger_name}', 'vendor_ledger', entry.id)
+    if payment_method == 'bank' and account_id:
+        from bank.models import BankAccount
+        try:
+            entry.account = BankAccount.objects.get(pk=account_id)
+        except BankAccount.DoesNotExist:
+            entry.account = None
+        entry.save(update_fields=['account'])
+
+    entry.voucher_no = voucher_no_for(entry)
+    entry.save(update_fields=['voucher_no'])
+
+    post_money(payment_method, 'out', amount, description or f'Payment to vendor for {passenger_name}', 'vendor_ledger', entry.id, account_id)
 
     return Response(VendorLedgerEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
 
@@ -124,7 +171,7 @@ def delete_vendor_entry(request, entry_id):
         return Response({'error': 'Entry not found'}, status=status.HTTP_404_NOT_FOUND)
 
     if entry.entry_type == 'debit':
-        reverse_by_reference('vendor_ledger', entry.id)
+        reverse_money(entry.payment_method or 'bank', 'vendor_ledger', entry.id)
 
     entry.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
@@ -250,20 +297,32 @@ class VendorPaymentSlip(View):
         except VendorLedgerEntry.DoesNotExist:
             return HttpResponse('Not found', status=404)
 
-        slip_no = f'SLP-{entry.id.hex[:8].upper()}'
+        slip_no = entry.voucher_no or f'SLP-{entry.id.hex[:8].upper()}'
         vendor_name = ''
         if entry.vendor:
             vendor_name = entry.vendor.name
         elif entry.ticket and entry.ticket.vendor:
             vendor_name = entry.ticket.vendor.name
 
+        method = dict(VendorLedgerEntry._meta.get_field('payment_method').flatchoices).get(
+            entry.payment_method, entry.payment_method or '—') if entry.payment_method else '—'
+        voucher_date = entry.voucher_date.strftime('%Y-%m-%d') if entry.voucher_date else entry.created_at.strftime('%Y-%m-%d %H:%M')
+
         fields = [
-            ('Slip No', slip_no),
-            ('Date', timezone.localtime(entry.created_at).strftime('%Y-%m-%d %H:%M')),
-            ('Type', entry.get_entry_type_display()),
+            ('Voucher No', slip_no),
+            ('Date', voucher_date),
+            ('Voucher Status', entry.voucher_status.capitalize()),
+            ('Branch', entry.branch or '—'),
+            ('Type', 'Payment Made'),
             ('Passenger', entry.passenger_name),
             ('Vendor', vendor_name or '—'),
+            ('Paid In', 'Cash' if entry.payment_method == 'cash' else 'Bank'),
+            ('Account', entry.account.name if entry.account else '—'),
+            ('Currency', entry.currency or 'PKR'),
+            ('Exchange Rate', f'{entry.exchange_rate:,.2f}' if entry.currency == 'SAR' else '—'),
+            ('Amount (SAR)', f'{entry.amount_sar:,.2f}' if entry.currency == 'SAR' else '—'),
             ('PNR', entry.ticket.pnr if entry.ticket else '—'),
+            ('Invoice Ref', entry.invoice_ref or '—'),
             ('Description', entry.description),
             ('Status', entry.get_status_display()),
         ]

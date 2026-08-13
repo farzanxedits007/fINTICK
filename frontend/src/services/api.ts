@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { User, Ticket, Customer, Vendor, CustomerLedgerEntry, VendorLedgerEntry, LedgerSummary, VendorLedgerSummary, PaginatedResponse, DashboardSummary, BankSummary } from '../types';
+import { User, Ticket, Customer, Vendor, CustomerLedgerEntry, VendorLedgerEntry, LedgerSummary, VendorLedgerSummary, PaginatedResponse, DashboardSummary, BankSummary, BankAccount, BankTransaction, CashSummary } from '../types';
 
 const env: any = (import.meta as any).env;
 const baseURL = env.VITE_API_URL || (env.DEV ? '/api' : 'https://fazimentor.pythonanywhere.com/api');
@@ -54,10 +54,30 @@ export const ticketAPI = {
   delete: (id: string) => api.delete(`/tickets/${id}/`),
 };
 
+export interface VoucherPayload {
+  amount: number;
+  amount_sar?: number;
+  currency?: 'PKR' | 'SAR';
+  exchange_rate?: number;
+  passenger_name: string;
+  description?: string;
+  ticket_id?: string;
+  customer_id?: string;
+  vendor_id?: string;
+  payment_method: 'bank' | 'cash';
+  account_id?: string | null;
+  voucher_date?: string;
+  voucher_status?: string;
+  branch?: string;
+  invoice_ref?: string;
+  cash_flow?: string;
+  advance_option?: string;
+}
+
 export const customerLedgerAPI = {
   list: (params?: Record<string, any>) => api.get<PaginatedResponse<CustomerLedgerEntry>>('/ledger/customer/', { params }),
   summary: (params?: Record<string, any>) => api.get<LedgerSummary>('/ledger/customer/summary/', { params }),
-  addPayment: (data: { amount: number; passenger_name: string; description?: string; ticket_id?: string; customer_id?: string; payment_method?: 'bank' | 'cash' }) =>
+  addPayment: (data: VoucherPayload) =>
     api.post<CustomerLedgerEntry>('/ledger/customer/add-payment/', data),
   delete: (entryId: string) => api.delete(`/ledger/customer/${entryId}/delete/`),
   export: (params?: Record<string, any>) => api.get('/ledger/customer/export/', { params, responseType: 'blob' }),
@@ -68,7 +88,7 @@ export const customerLedgerAPI = {
 export const vendorLedgerAPI = {
   list: (params?: Record<string, any>) => api.get<PaginatedResponse<VendorLedgerEntry>>('/ledger/vendor/', { params }),
   summary: (params?: Record<string, any>) => api.get<VendorLedgerSummary>('/ledger/vendor/summary/', { params }),
-  addPayment: (data: { amount: number; passenger_name: string; description?: string; ticket_id?: string; vendor_id?: string; payment_method?: 'bank' | 'cash' }) =>
+  addPayment: (data: VoucherPayload) =>
     api.post<VendorLedgerEntry>('/ledger/vendor/add-payment/', data),
   delete: (entryId: string) => api.delete(`/ledger/vendor/${entryId}/delete/`),
   export: (params?: Record<string, any>) => api.get('/ledger/vendor/export/', { params, responseType: 'blob' }),
@@ -77,9 +97,18 @@ export const vendorLedgerAPI = {
 };
 
 export const bankAPI = {
-  summary: () => api.get<BankSummary>('/bank/'),
-  transactions: (params?: Record<string, any>) => api.get('/bank/transactions/', { params }),
+  list: () => api.get<BankAccount[]>('/bank/accounts/'),
+  create: (data: { name: string }) => api.post<BankAccount>('/bank/accounts/', data),
+  delete: (id: string) => api.delete(`/bank/accounts/${id}/`),
+  summary: (accountId?: string) => api.get<BankSummary>('/bank/', { params: accountId ? { account_id: accountId } : {} }),
+  transactions: (params?: Record<string, any>) => api.get<BankTransaction[]>('/bank/transactions/', { params }),
   export: () => api.get('/bank/export/', { responseType: 'blob' }),
+};
+
+export const cashAPI = {
+  summary: () => api.get<CashSummary>('/cash/'),
+  transactions: (params?: Record<string, any>) => api.get('/cash/transactions/', { params }),
+  export: () => api.get('/cash/export/', { responseType: 'blob' }),
 };
 
 export default api;

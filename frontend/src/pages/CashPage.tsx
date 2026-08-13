@@ -1,44 +1,30 @@
-import { useEffect, useState, useCallback } from 'react';
-import { bankAPI } from '../services/api';
-import { BankSummary, BankAccount } from '../types';
-import { Landmark, ArrowDownLeft, ArrowUpRight, Search, Download } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { cashAPI } from '../services/api';
+import { CashSummary } from '../types';
+import { Wallet, ArrowDownLeft, ArrowUpRight, Search, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const fmt = (v: number | string) => `PKR ${Number(v).toLocaleString('en-PK', { minimumFractionDigits: 2 })}`;
 
-export default function BankPage() {
-  const [data, setData] = useState<BankSummary | null>(null);
-  const [accounts, setAccounts] = useState<BankAccount[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState('');
+export default function CashPage() {
+  const [data, setData] = useState<CashSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
-  const load = useCallback(() => {
-    bankAPI.summary(selectedAccountId || undefined).then(({ data }) => { setData(data); setLoading(false); });
-  }, [selectedAccountId]);
+  const load = () => {
+    cashAPI.summary().then(({ data }) => { setData(data); setLoading(false); });
+  };
 
-  useEffect(() => {
-    bankAPI.list().then(({ data }) => {
-      const list = data || [];
-      setAccounts(list);
-      if (list.length > 0) {
-        setSelectedAccountId((cur) => cur || list[0].id);
-      } else {
-        load();
-      }
-    }).catch(() => load());
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, []);
 
   const handleExport = async () => {
     try {
-      const resp = await bankAPI.export();
+      const resp = await cashAPI.export();
       const blob = new Blob([resp.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'bank_transactions.xlsx';
+      a.download = 'cash_transactions.xlsx';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -48,7 +34,7 @@ export default function BankPage() {
     }
   };
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Loading bank data...</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Loading cash data...</div>;
   if (!data) return <div className="flex items-center justify-center h-64 text-gray-400">Failed to load</div>;
 
   const balance = Number(data.account.balance);
@@ -65,30 +51,18 @@ export default function BankPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Bank Accounts</h2>
-          <p className="text-sm text-gray-500 mt-1">Track all deposits and withdrawals</p>
-        </div>
-        <select
-          className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-          value={selectedAccountId}
-          onChange={(e) => setSelectedAccountId(e.target.value)}
-        >
-          <option value="">— Select Account —</option>
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>{a.name} — {fmt(a.balance)}</option>
-          ))}
-        </select>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-gray-900">Cash Account</h2>
+        <p className="text-sm text-gray-500 mt-1">Cash received and paid through vouchers</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className={`rounded-xl border p-5 ${balance >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
           <div className="flex items-center gap-3 mb-2">
             <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${balance >= 0 ? 'bg-emerald-100' : 'bg-red-100'}`}>
-              <Landmark size={20} className={balance >= 0 ? 'text-emerald-700' : 'text-red-700'} />
+              <Wallet size={20} className={balance >= 0 ? 'text-emerald-700' : 'text-red-700'} />
             </div>
-            <span className="text-xs uppercase font-medium text-gray-600">Current Balance</span>
+            <span className="text-xs uppercase font-medium text-gray-600">Cash in Hand</span>
           </div>
           <p className={`text-2xl font-bold ${balance >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>{fmt(balance)}</p>
           <p className="text-xs text-gray-500 mt-1">{data.account.name}</p>
@@ -99,7 +73,7 @@ export default function BankPage() {
             <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
               <ArrowDownLeft size={20} className="text-emerald-600" />
             </div>
-            <span className="text-xs text-gray-500 uppercase font-medium">Total Deposits</span>
+            <span className="text-xs text-gray-500 uppercase font-medium">Total Cash Received</span>
           </div>
           <p className="text-2xl font-bold text-emerald-600">{fmt(totalDeposits)}</p>
           <p className="text-xs text-gray-400 mt-1">{deposits.length} transactions</p>
@@ -110,7 +84,7 @@ export default function BankPage() {
             <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center">
               <ArrowUpRight size={20} className="text-red-600" />
             </div>
-            <span className="text-xs text-gray-500 uppercase font-medium">Total Withdrawals</span>
+            <span className="text-xs text-gray-500 uppercase font-medium">Total Cash Paid</span>
           </div>
           <p className="text-2xl font-bold text-red-600">{fmt(totalWithdrawals)}</p>
           <p className="text-xs text-gray-400 mt-1">{withdrawals.length} transactions</p>
@@ -147,7 +121,7 @@ export default function BankPage() {
                 <td className="px-5 py-3">
                   <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${tx.tx_type === 'deposit' ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'}`}>
                     {tx.tx_type === 'deposit' ? <ArrowDownLeft size={12} /> : <ArrowUpRight size={12} />}
-                    {tx.tx_type === 'deposit' ? 'Deposit' : 'Withdrawal'}
+                    {tx.tx_type === 'deposit' ? 'Cash In' : 'Cash Out'}
                   </span>
                 </td>
                 <td className="px-5 py-3 text-sm text-gray-600 max-w-xs truncate">{tx.description}</td>

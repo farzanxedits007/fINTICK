@@ -9,4 +9,5 @@ urlpatterns = [
     path('api/ledger/customer/', include('customer_ledger.urls')),
     path('api/ledger/vendor/', include('vendor_ledger.urls')),
     path('api/bank/', include('bank.urls')),
+    path('api/cash/', include('cash.urls')),
 ]
