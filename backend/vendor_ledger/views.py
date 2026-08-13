@@ -3,6 +3,7 @@ from io import BytesIO
 from django.db.models import Sum, Q, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
+from django.utils import timezone
 from django.views import View
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
@@ -12,6 +13,7 @@ from openpyxl import Workbook
 from .models import VendorLedgerEntry
 from .serializers import VendorLedgerEntrySerializer
 from bank.services import withdraw as bank_withdraw, reverse_by_reference
+from pdf_export import ledger_pdf, payment_slip_pdf
 
 
 class VendorLedgerListView(generics.ListAPIView):
@@ -70,6 +72,10 @@ def add_vendor_payment(request):
     description = request.data.get('description', 'Payment made')
     ticket_id = request.data.get('ticket_id')
     vendor_id = request.data.get('vendor_id')
+    payment_method = request.data.get('payment_method', 'bank')
+
+    if payment_method not in ('bank', 'cash'):
+        payment_method = 'bank'
 
     if amount <= 0:
         return Response({'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
@@ -103,7 +109,8 @@ def add_vendor_payment(request):
         status=VendorLedgerEntry.Status.PAID,
     )
 
-    bank_withdraw(amount, description or f'Payment to vendor for {passenger_name}', 'vendor_ledger', entry.id)
+    if payment_method == 'bank':
+        bank_withdraw(amount, description or f'Payment to vendor for {passenger_name}', 'vendor_ledger', entry.id)
 
     return Response(VendorLedgerEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
 
@@ -180,4 +187,88 @@ class VendorExcelExport(View):
 
         response = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename="vendor_ledger.xlsx"'
+        return response
+
+
+class VendorPdfExport(View):
+    def get(self, request):
+        auth = JWTAuthentication()
+        try:
+            user, _ = auth.authenticate(request)
+        except Exception:
+            return HttpResponse('Unauthorized', status=401)
+        if user is None:
+            return HttpResponse('Unauthorized', status=401)
+
+        qs = VendorLedgerEntry.objects.select_related('ticket', 'ticket__vendor', 'vendor').order_by('-created_at')
+        vendor_id = request.GET.get('vendor_id')
+        if vendor_id:
+            qs = qs.filter(Q(ticket__vendor_id=vendor_id) | Q(vendor_id=vendor_id))
+
+        rows = []
+        for entry in qs:
+            vendor_name = ''
+            if entry.vendor:
+                vendor_name = entry.vendor.name
+            elif entry.ticket and entry.ticket.vendor:
+                vendor_name = entry.ticket.vendor.name
+            rows.append([
+                entry.created_at.strftime('%Y-%m-%d %H:%M'),
+                entry.passenger_name,
+                entry.ticket.pnr if entry.ticket else '',
+                vendor_name,
+                entry.get_entry_type_display(),
+                f'{entry.amount_pkr:,.2f}',
+                entry.description,
+                entry.get_status_display(),
+            ])
+
+        header = ['Date', 'Passenger', 'PNR', 'Vendor', 'Type', 'Amount (PKR)', 'Description', 'Status']
+        title = 'Vendor Ledger'
+        if vendor_id and rows:
+            title = f'Vendor Ledger — {rows[0][3] or vendor_id}'
+        subtitle = f'Generated {timezone.localtime().strftime("%Y-%m-%d %H:%M")}'
+        buf = ledger_pdf(title, subtitle, header, rows)
+
+        response = HttpResponse(buf.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="vendor_ledger.pdf"'
+        return response
+
+
+class VendorPaymentSlip(View):
+    def get(self, request, entry_id):
+        auth = JWTAuthentication()
+        try:
+            user, _ = auth.authenticate(request)
+        except Exception:
+            return HttpResponse('Unauthorized', status=401)
+        if user is None:
+            return HttpResponse('Unauthorized', status=401)
+
+        try:
+            entry = VendorLedgerEntry.objects.select_related('ticket', 'vendor').get(pk=entry_id)
+        except VendorLedgerEntry.DoesNotExist:
+            return HttpResponse('Not found', status=404)
+
+        slip_no = f'SLP-{entry.id.hex[:8].upper()}'
+        vendor_name = ''
+        if entry.vendor:
+            vendor_name = entry.vendor.name
+        elif entry.ticket and entry.ticket.vendor:
+            vendor_name = entry.ticket.vendor.name
+
+        fields = [
+            ('Slip No', slip_no),
+            ('Date', timezone.localtime(entry.created_at).strftime('%Y-%m-%d %H:%M')),
+            ('Type', entry.get_entry_type_display()),
+            ('Passenger', entry.passenger_name),
+            ('Vendor', vendor_name or '—'),
+            ('PNR', entry.ticket.pnr if entry.ticket else '—'),
+            ('Description', entry.description),
+            ('Status', entry.get_status_display()),
+        ]
+        buf = payment_slip_pdf('FinTick', slip_no, fields, f'{entry.amount_pkr:,.2f}')
+
+        response = HttpResponse(buf.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="slip_{entry.id.hex[:8]}.pdf"'
         return response

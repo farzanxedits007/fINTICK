@@ -1,14 +1,15 @@
 import { useEffect, useState, useCallback } from 'react';
-import { customerLedgerAPI, customerAPI } from '../services/api';
-import { Customer, CustomerLedgerEntry, LedgerSummary } from '../types';
+import { customerLedgerAPI, customerAPI, ticketAPI } from '../services/api';
+import { Customer, CustomerLedgerEntry, LedgerSummary, Ticket } from '../types';
 import toast from 'react-hot-toast';
-import { Search, Plus, X, UserPlus, ArrowLeft, Phone, MapPin, Trash2, Download } from 'lucide-react';
+import { Search, Plus, X, UserPlus, ArrowLeft, Phone, MapPin, Trash2, Download, FileText, FileDown } from 'lucide-react';
 
 const fmt = (v: number | string) => `PKR ${Number(v).toLocaleString('en-PK', { minimumFractionDigits: 2 })}`;
 
 export default function CustomerLedgerPage() {
   const [entries, setEntries] = useState<CustomerLedgerEntry[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [pendingTickets, setPendingTickets] = useState<Ticket[]>([]);
   const [summary, setSummary] = useState<LedgerSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -19,7 +20,7 @@ export default function CustomerLedgerPage() {
   const [showEditCustomer, setShowEditCustomer] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [payForm, setPayForm] = useState({ passenger_name: '', amount: '', description: '' });
+  const [payForm, setPayForm] = useState({ passenger_name: '', amount: '', description: '', ticket_id: '', payment_method: 'bank' });
   const [custForm, setCustForm] = useState({ name: '', phone: '', email: '', city: '', address: '', notes: '' });
   const [editForm, setEditForm] = useState({ name: '', phone: '', email: '', city: '', address: '', notes: '' });
 
@@ -33,14 +34,20 @@ export default function CustomerLedgerPage() {
     const summaryParams: Record<string, any> = {};
     if (selectedCustomer) summaryParams.customer_id = selectedCustomer.id;
 
+    const ticketPromise = selectedCustomer
+      ? ticketAPI.list({ customer_id: selectedCustomer.id, status: 'pending' }).then(({ data }) => data.results || [])
+      : Promise.resolve<Ticket[]>([]);
+
     Promise.all([
       customerLedgerAPI.list(params),
       customerLedgerAPI.summary(summaryParams),
       customerAPI.list(),
-    ]).then(([ledger, sum, cust]) => {
+      ticketPromise,
+    ]).then(([ledger, sum, cust, tickets]) => {
       setEntries(ledger.data.results || []);
       setSummary(sum.data);
       setCustomers(cust.data.results || []);
+      setPendingTickets(tickets);
       setLoading(false);
     });
   }, [search, statusFilter, selectedCustomer]);
@@ -66,6 +73,42 @@ export default function CustomerLedgerPage() {
     }
   };
 
+  const handleExportPdf = async () => {
+    const params: Record<string, any> = {};
+    if (selectedCustomer) params.customer_id = selectedCustomer.id;
+    try {
+      const resp = await customerLedgerAPI.exportPdf(params);
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = selectedCustomer ? `${selectedCustomer.name}_ledger.pdf` : 'customer_ledger.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+    } catch (err: any) {
+      toast.error('Failed to download: ' + (err.response?.status || err.message));
+    }
+  };
+
+  const handleSlip = async (entry: CustomerLedgerEntry) => {
+    try {
+      const resp = await customerLedgerAPI.slip(entry.id);
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payment_slip_${entry.passenger_name.replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+    } catch (err: any) {
+      toast.error('Failed to download slip');
+    }
+  };
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payForm.passenger_name.trim()) { toast.error('Passenger name is required'); return; }
@@ -77,10 +120,12 @@ export default function CustomerLedgerPage() {
         passenger_name: payForm.passenger_name.trim(),
         description: payForm.description.trim() || 'Payment received',
         customer_id: selectedCustomer?.id || undefined,
+        ticket_id: payForm.ticket_id || undefined,
+        payment_method: payForm.payment_method as 'bank' | 'cash',
       });
       toast.success('Payment recorded!');
       setShowPayment(false);
-      setPayForm({ passenger_name: '', amount: '', description: '' });
+      setPayForm({ passenger_name: '', amount: '', description: '', ticket_id: '', payment_method: 'bank' });
       load();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to record payment');
@@ -258,6 +303,9 @@ export default function CustomerLedgerPage() {
           <button onClick={handleExport} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
             <Download size={16} /> Download Excel
           </button>
+          <button onClick={handleExportPdf} className="flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-700 transition-colors">
+            <FileDown size={16} /> Download PDF
+          </button>
         </div>
       </div>
 
@@ -300,9 +348,16 @@ export default function CustomerLedgerPage() {
                   </span>
                 </td>
                 <td className="px-5 py-3 text-center">
-                  <button onClick={() => handleDelete(e.id)} className="text-gray-400 hover:text-red-600 p-1 transition-colors" title="Delete entry">
-                    <Trash2 size={15} />
-                  </button>
+                  <div className="flex justify-center gap-1">
+                    {e.entry_type === 'credit' && (
+                      <button onClick={() => handleSlip(e)} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" title="Download payment slip">
+                        <FileText size={15} />
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(e.id)} className="text-gray-400 hover:text-red-600 p-1 transition-colors" title="Delete entry">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -319,8 +374,45 @@ export default function CustomerLedgerPage() {
             </div>
             <form onSubmit={handlePayment} className="space-y-4">
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ticket</label>
+                <select
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  value={payForm.ticket_id}
+                  onChange={(e) => {
+                    const ticket = pendingTickets.find((t) => t.id === e.target.value);
+                    setPayForm({
+                      ...payForm,
+                      ticket_id: e.target.value,
+                      passenger_name: ticket ? ticket.passenger_name : payForm.passenger_name,
+                    });
+                  }}
+                >
+                  <option value="">— No ticket (general payment) —</option>
+                  {pendingTickets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.passenger_name} — {t.pnr || 'No PNR'} — {fmt(t.ticket_price_pkr)}
+                    </option>
+                  ))}
+                </select>
+                {pendingTickets.length === 0 && <p className="text-xs text-amber-600 mt-1">No pending tickets for this customer.</p>}
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Passenger Name *</label>
                 <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" placeholder="Name on the ticket" value={payForm.passenger_name} onChange={(e) => setPayForm({ ...payForm, passenger_name: e.target.value })} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method *</label>
+                <div className="flex gap-2">
+                  <label className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm font-medium transition-colors ${payForm.payment_method === 'bank' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="payment_method" value="bank" checked={payForm.payment_method === 'bank'} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })} className="sr-only" />
+                    Bank
+                  </label>
+                  <label className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm font-medium transition-colors ${payForm.payment_method === 'cash' ? 'border-emerald-500 bg-emerald-50 text-emerald-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="payment_method" value="cash" checked={payForm.payment_method === 'cash'} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })} className="sr-only" />
+                    Cash
+                  </label>
+                </div>
+                {payForm.payment_method === 'cash' && <p className="text-xs text-gray-400 mt-1">Cash received — no bank deposit recorded.</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount (PKR) *</label>

@@ -18,7 +18,7 @@ export default function TicketPostingPage() {
 
   const [form, setForm] = useState({
     customer: '', vendor: '',
-    passenger_name: '', passport_no: '', date_of_birth: '', passport_expiry: '',
+    ticket_type: 'flight', passenger_name: '', passport_no: '', date_of_birth: '', passport_expiry: '',
     gender: 'male', pnr: '', flight_date: '', airline: '',
     vendor_cost_pkr: '', ticket_price_pkr: '',
   });
@@ -47,6 +47,7 @@ export default function TicketPostingPage() {
         ...form,
         customer: form.customer || null,
         vendor: form.vendor || null,
+        ticket_type: form.ticket_type as 'flight' | 'visa' | 'umrah',
         gender: form.gender as 'male' | 'female' | 'other',
         vendor_cost_pkr: Number(form.vendor_cost_pkr),
         ticket_price_pkr: Number(form.ticket_price_pkr),
@@ -56,7 +57,7 @@ export default function TicketPostingPage() {
       });
       toast.success('Ticket posted & ledgers updated!');
       setShowForm(false);
-      setForm({ customer: '', vendor: '', passenger_name: '', passport_no: '', date_of_birth: '', passport_expiry: '', gender: 'male', pnr: '', flight_date: '', airline: '', vendor_cost_pkr: '', ticket_price_pkr: '' });
+      setForm({ customer: '', vendor: '', ticket_type: 'flight', passenger_name: '', passport_no: '', date_of_birth: '', passport_expiry: '', gender: 'male', pnr: '', flight_date: '', airline: '', vendor_cost_pkr: '', ticket_price_pkr: '' });
       load();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to post ticket');
@@ -103,6 +104,7 @@ export default function TicketPostingPage() {
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Passenger</th>
+              <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Customer</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Vendor</th>
               <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase">PNR</th>
@@ -115,12 +117,17 @@ export default function TicketPostingPage() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading ? (
-              <tr><td colSpan={9} className="text-center py-12 text-gray-400">Loading...</td></tr>
+              <tr><td colSpan={10} className="text-center py-12 text-gray-400">Loading...</td></tr>
             ) : tickets.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-12 text-gray-400">No tickets found</td></tr>
+              <tr><td colSpan={10} className="text-center py-12 text-gray-400">No tickets found</td></tr>
             ) : tickets.map((t) => (
               <tr key={t.id} className="hover:bg-gray-50 transition-colors">
                 <td className="px-5 py-3 font-medium text-sm">{t.passenger_name}</td>
+                <td className="px-5 py-3 text-sm">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize bg-purple-100 text-purple-800">
+                    {t.ticket_type === 'flight' ? 'Flight' : t.ticket_type}
+                  </span>
+                </td>
                 <td className="px-5 py-3 text-sm text-gray-600">{t.customer_name || '—'}</td>
                 <td className="px-5 py-3 text-sm text-gray-600">{t.vendor_name || '—'}</td>
                 <td className="px-5 py-3 text-sm font-mono text-gray-600">{t.pnr || '—'}</td>
@@ -207,6 +214,14 @@ export default function TicketPostingPage() {
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Passenger Details</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Ticket Type *</label>
+                    <select className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.ticket_type} onChange={(e) => setForm({ ...form, ticket_type: e.target.value })} required>
+                      <option value="flight">Flight Ticket</option>
+                      <option value="visa">Visa</option>
+                      <option value="umrah">Umrah</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Passenger Name *</label>
                     <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:outline-none" value={form.passenger_name} onChange={(e) => setForm({ ...form, passenger_name: e.target.value })} required />
                   </div>
@@ -288,6 +303,7 @@ export default function TicketPostingPage() {
             </div>
             <div className="space-y-2 text-sm">
               <div className="grid grid-cols-2 gap-2">
+                <span className="text-gray-500">Type:</span><span className="font-medium capitalize">{detail.ticket_type === 'flight' ? 'Flight Ticket' : detail.ticket_type}</span>
                 <span className="text-gray-500">Customer:</span><span className="font-medium">{detail.customer_name || '—'}</span>
                 <span className="text-gray-500">Vendor:</span><span className="font-medium">{detail.vendor_name || '—'}</span>
                 <span className="text-gray-500">Passport:</span><span className="font-medium">{detail.passport_no}</span>

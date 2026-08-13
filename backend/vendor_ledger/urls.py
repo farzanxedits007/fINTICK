@@ -7,4 +7,6 @@ urlpatterns = [
     path('add-payment/', views.add_vendor_payment, name='vendor-add-payment'),
     path('<uuid:entry_id>/delete/', views.delete_vendor_entry, name='vendor-delete-entry'),
     path('export/', views.VendorExcelExport.as_view(), name='vendor-excel-export'),
+    path('export/pdf/', views.VendorPdfExport.as_view(), name='vendor-pdf-export'),
+    path('<uuid:entry_id>/slip/', views.VendorPaymentSlip.as_view(), name='vendor-payment-slip'),
 ]

@@ -9,12 +9,18 @@ class Ticket(models.Model):
         FEMALE = 'female', 'Female'
         OTHER = 'other', 'Other'
 
+    class TicketType(models.TextChoices):
+        FLIGHT = 'flight', 'Flight Ticket'
+        VISA = 'visa', 'Visa'
+        UMRAH = 'umrah', 'Umrah'
+
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'
         PAID = 'paid', 'Paid'
         CANCELLED = 'cancelled', 'Cancelled'
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    ticket_type = models.CharField(max_length=10, choices=TicketType.choices, default=TicketType.FLIGHT)
 
     customer = models.ForeignKey('accounts.Customer', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')
     vendor = models.ForeignKey('accounts.Vendor', on_delete=models.SET_NULL, null=True, blank=True, related_name='tickets')

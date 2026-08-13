@@ -37,6 +37,7 @@ export interface Vendor {
 
 export interface Ticket {
   id: string;
+  ticket_type: 'flight' | 'visa' | 'umrah';
   customer: string | null;
   customer_name: string;
   vendor: string | null;

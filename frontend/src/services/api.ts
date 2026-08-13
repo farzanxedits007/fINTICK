@@ -57,19 +57,23 @@ export const ticketAPI = {
 export const customerLedgerAPI = {
   list: (params?: Record<string, any>) => api.get<PaginatedResponse<CustomerLedgerEntry>>('/ledger/customer/', { params }),
   summary: (params?: Record<string, any>) => api.get<LedgerSummary>('/ledger/customer/summary/', { params }),
-  addPayment: (data: { amount: number; passenger_name: string; description?: string; ticket_id?: string; customer_id?: string }) =>
+  addPayment: (data: { amount: number; passenger_name: string; description?: string; ticket_id?: string; customer_id?: string; payment_method?: 'bank' | 'cash' }) =>
     api.post<CustomerLedgerEntry>('/ledger/customer/add-payment/', data),
   delete: (entryId: string) => api.delete(`/ledger/customer/${entryId}/delete/`),
   export: (params?: Record<string, any>) => api.get('/ledger/customer/export/', { params, responseType: 'blob' }),
+  exportPdf: (params?: Record<string, any>) => api.get('/ledger/customer/export/pdf/', { params, responseType: 'blob' }),
+  slip: (entryId: string) => api.get(`/ledger/customer/${entryId}/slip/`, { responseType: 'blob' }),
 };
 
 export const vendorLedgerAPI = {
   list: (params?: Record<string, any>) => api.get<PaginatedResponse<VendorLedgerEntry>>('/ledger/vendor/', { params }),
   summary: (params?: Record<string, any>) => api.get<VendorLedgerSummary>('/ledger/vendor/summary/', { params }),
-  addPayment: (data: { amount: number; passenger_name: string; description?: string; ticket_id?: string; vendor_id?: string }) =>
+  addPayment: (data: { amount: number; passenger_name: string; description?: string; ticket_id?: string; vendor_id?: string; payment_method?: 'bank' | 'cash' }) =>
     api.post<VendorLedgerEntry>('/ledger/vendor/add-payment/', data),
   delete: (entryId: string) => api.delete(`/ledger/vendor/${entryId}/delete/`),
   export: (params?: Record<string, any>) => api.get('/ledger/vendor/export/', { params, responseType: 'blob' }),
+  exportPdf: (params?: Record<string, any>) => api.get('/ledger/vendor/export/pdf/', { params, responseType: 'blob' }),
+  slip: (entryId: string) => api.get(`/ledger/vendor/${entryId}/slip/`, { responseType: 'blob' }),
 };
 
 export const bankAPI = {

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { vendorLedgerAPI, vendorAPI } from '../services/api';
 import { Vendor, VendorLedgerEntry, VendorLedgerSummary } from '../types';
 import toast from 'react-hot-toast';
-import { Search, Plus, X, Building2, ArrowLeft, Phone, MapPin, Trash2, Download } from 'lucide-react';
+import { Search, Plus, X, Building2, ArrowLeft, Phone, MapPin, Trash2, Download, FileText, FileDown } from 'lucide-react';
 
 const fmt = (v: number | string) => `PKR ${Number(v).toLocaleString('en-PK', { minimumFractionDigits: 2 })}`;
 
@@ -19,7 +19,7 @@ export default function VendorLedgerPage() {
   const [showEditVendor, setShowEditVendor] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [payForm, setPayForm] = useState({ passenger_name: '', amount: '', description: '' });
+  const [payForm, setPayForm] = useState({ passenger_name: '', amount: '', description: '', payment_method: 'bank' });
   const [vendorForm, setVendorForm] = useState({ name: '', company: '', phone: '', email: '', city: '', address: '', notes: '' });
   const [editForm, setEditForm] = useState({ name: '', company: '', phone: '', email: '', city: '', address: '', notes: '' });
 
@@ -66,6 +66,42 @@ export default function VendorLedgerPage() {
     }
   };
 
+  const handleExportPdf = async () => {
+    const params: Record<string, any> = {};
+    if (selectedVendor) params.vendor_id = selectedVendor.id;
+    try {
+      const resp = await vendorLedgerAPI.exportPdf(params);
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = selectedVendor ? `${selectedVendor.name}_ledger.pdf` : 'vendor_ledger.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+    } catch (err: any) {
+      toast.error('Failed to download: ' + (err.response?.status || err.message));
+    }
+  };
+
+  const handleSlip = async (entry: VendorLedgerEntry) => {
+    try {
+      const resp = await vendorLedgerAPI.slip(entry.id);
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payment_slip_${entry.passenger_name.replace(/\s+/g, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 5000);
+    } catch (err: any) {
+      toast.error('Failed to download slip');
+    }
+  };
+
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payForm.passenger_name.trim()) { toast.error('Passenger name is required'); return; }
@@ -77,10 +113,11 @@ export default function VendorLedgerPage() {
         passenger_name: payForm.passenger_name.trim(),
         description: payForm.description.trim() || 'Payment made to vendor',
         vendor_id: selectedVendor?.id || undefined,
+        payment_method: payForm.payment_method as 'bank' | 'cash',
       });
       toast.success('Payment recorded!');
       setShowPayment(false);
-      setPayForm({ passenger_name: '', amount: '', description: '' });
+      setPayForm({ passenger_name: '', amount: '', description: '', payment_method: 'bank' });
       load();
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to record payment');
@@ -261,6 +298,9 @@ export default function VendorLedgerPage() {
           <button onClick={handleExport} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
             <Download size={16} /> Download Excel
           </button>
+          <button onClick={handleExportPdf} className="flex items-center gap-2 bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-700 transition-colors">
+            <FileDown size={16} /> Download PDF
+          </button>
         </div>
       </div>
 
@@ -303,9 +343,16 @@ export default function VendorLedgerPage() {
                   </span>
                 </td>
                 <td className="px-5 py-3 text-center">
-                  <button onClick={() => handleDelete(e.id)} className="text-gray-400 hover:text-red-600 p-1 transition-colors" title="Delete entry">
-                    <Trash2 size={15} />
-                  </button>
+                  <div className="flex justify-center gap-1">
+                    {e.entry_type === 'debit' && (
+                      <button onClick={() => handleSlip(e)} className="text-gray-400 hover:text-blue-600 p-1 transition-colors" title="Download payment slip">
+                        <FileText size={15} />
+                      </button>
+                    )}
+                    <button onClick={() => handleDelete(e.id)} className="text-gray-400 hover:text-red-600 p-1 transition-colors" title="Delete entry">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -324,6 +371,20 @@ export default function VendorLedgerPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Passenger Name *</label>
                 <input className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Name on the ticket" value={payForm.passenger_name} onChange={(e) => setPayForm({ ...payForm, passenger_name: e.target.value })} required />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Payment Method *</label>
+                <div className="flex gap-2">
+                  <label className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm font-medium transition-colors ${payForm.payment_method === 'bank' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="payment_method" value="bank" checked={payForm.payment_method === 'bank'} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })} className="sr-only" />
+                    Bank
+                  </label>
+                  <label className={`flex-1 flex items-center justify-center gap-2 border rounded-lg px-3 py-2 cursor-pointer text-sm font-medium transition-colors ${payForm.payment_method === 'cash' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                    <input type="radio" name="payment_method" value="cash" checked={payForm.payment_method === 'cash'} onChange={(e) => setPayForm({ ...payForm, payment_method: e.target.value })} className="sr-only" />
+                    Cash
+                  </label>
+                </div>
+                {payForm.payment_method === 'cash' && <p className="text-xs text-gray-400 mt-1">Cash paid — no bank withdrawal recorded.</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Amount (PKR) *</label>

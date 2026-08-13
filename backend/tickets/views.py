@@ -19,6 +19,12 @@ class TicketListView(generics.ListCreateAPIView):
                 Q(pnr__icontains=q) |
                 Q(airline__icontains=q)
             )
+        customer_id = self.request.query_params.get('customer_id')
+        if customer_id:
+            qs = qs.filter(customer_id=customer_id)
+        status = self.request.query_params.get('status')
+        if status:
+            qs = qs.filter(status=status)
         return qs
 
     def perform_create(self, serializer):

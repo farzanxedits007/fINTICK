@@ -3,6 +3,7 @@ from io import BytesIO
 from django.db.models import Sum, Q, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
+from django.utils import timezone
 from django.views import View
 from rest_framework import generics, permissions, status
 from rest_framework.decorators import api_view, permission_classes
@@ -12,6 +13,7 @@ from openpyxl import Workbook
 from .models import CustomerLedgerEntry
 from .serializers import CustomerLedgerEntrySerializer
 from bank.services import deposit as bank_deposit, reverse_by_reference
+from pdf_export import ledger_pdf, payment_slip_pdf
 
 
 class CustomerLedgerListView(generics.ListAPIView):
@@ -70,6 +72,10 @@ def add_customer_payment(request):
     description = request.data.get('description', 'Payment received')
     ticket_id = request.data.get('ticket_id')
     customer_id = request.data.get('customer_id')
+    payment_method = request.data.get('payment_method', 'bank')
+
+    if payment_method not in ('bank', 'cash'):
+        payment_method = 'bank'
 
     if amount <= 0:
         return Response({'error': 'Amount must be greater than 0'}, status=status.HTTP_400_BAD_REQUEST)
@@ -103,7 +109,12 @@ def add_customer_payment(request):
         status=CustomerLedgerEntry.Status.PAID,
     )
 
-    bank_deposit(amount, description or f'Payment from {passenger_name}', 'customer_ledger', entry.id)
+    if payment_method == 'bank':
+        bank_deposit(amount, description or f'Payment from {passenger_name}', 'customer_ledger', entry.id)
+
+    if ticket is not None and ticket.status != 'cancelled':
+        ticket.status = 'paid'
+        ticket.save(update_fields=['status', 'updated_at'])
 
     return Response(CustomerLedgerEntrySerializer(entry).data, status=status.HTTP_201_CREATED)
 
@@ -118,6 +129,13 @@ def delete_customer_entry(request, entry_id):
 
     if entry.entry_type == 'credit':
         reverse_by_reference('customer_ledger', entry.id)
+        if entry.ticket is not None:
+            remaining = CustomerLedgerEntry.objects.filter(
+                ticket=entry.ticket, entry_type='credit'
+            ).exclude(pk=entry.id).exists()
+            if not remaining and entry.ticket.status == 'paid':
+                entry.ticket.status = 'pending'
+                entry.ticket.save(update_fields=['status', 'updated_at'])
 
     entry.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
@@ -180,4 +198,88 @@ class CustomerExcelExport(View):
 
         response = HttpResponse(buf.getvalue(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         response['Content-Disposition'] = 'attachment; filename="customer_ledger.xlsx"'
+        return response
+
+
+class CustomerPdfExport(View):
+    def get(self, request):
+        auth = JWTAuthentication()
+        try:
+            user, _ = auth.authenticate(request)
+        except Exception:
+            return HttpResponse('Unauthorized', status=401)
+        if user is None:
+            return HttpResponse('Unauthorized', status=401)
+
+        qs = CustomerLedgerEntry.objects.select_related('ticket', 'ticket__customer', 'customer').order_by('-created_at')
+        customer_id = request.GET.get('customer_id')
+        if customer_id:
+            qs = qs.filter(Q(ticket__customer_id=customer_id) | Q(customer_id=customer_id))
+
+        rows = []
+        for entry in qs:
+            customer_name = ''
+            if entry.customer:
+                customer_name = entry.customer.name
+            elif entry.ticket and entry.ticket.customer:
+                customer_name = entry.ticket.customer.name
+            rows.append([
+                entry.created_at.strftime('%Y-%m-%d %H:%M'),
+                entry.passenger_name,
+                entry.ticket.pnr if entry.ticket else '',
+                customer_name,
+                entry.get_entry_type_display(),
+                f'{entry.amount_pkr:,.2f}',
+                entry.description,
+                entry.get_status_display(),
+            ])
+
+        header = ['Date', 'Passenger', 'PNR', 'Customer', 'Type', 'Amount (PKR)', 'Description', 'Status']
+        title = 'Customer Ledger'
+        if customer_id and rows:
+            title = f'Customer Ledger — {rows[0][3] or customer_id}'
+        subtitle = f'Generated {timezone.localtime().strftime("%Y-%m-%d %H:%M")}'
+        buf = ledger_pdf(title, subtitle, header, rows)
+
+        response = HttpResponse(buf.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="customer_ledger.pdf"'
+        return response
+
+
+class CustomerPaymentSlip(View):
+    def get(self, request, entry_id):
+        auth = JWTAuthentication()
+        try:
+            user, _ = auth.authenticate(request)
+        except Exception:
+            return HttpResponse('Unauthorized', status=401)
+        if user is None:
+            return HttpResponse('Unauthorized', status=401)
+
+        try:
+            entry = CustomerLedgerEntry.objects.select_related('ticket', 'customer').get(pk=entry_id)
+        except CustomerLedgerEntry.DoesNotExist:
+            return HttpResponse('Not found', status=404)
+
+        slip_no = f'SLP-{entry.id.hex[:8].upper()}'
+        customer_name = ''
+        if entry.customer:
+            customer_name = entry.customer.name
+        elif entry.ticket and entry.ticket.customer:
+            customer_name = entry.ticket.customer.name
+
+        fields = [
+            ('Slip No', slip_no),
+            ('Date', timezone.localtime(entry.created_at).strftime('%Y-%m-%d %H:%M')),
+            ('Type', entry.get_entry_type_display()),
+            ('Passenger', entry.passenger_name),
+            ('Customer', customer_name or '—'),
+            ('PNR', entry.ticket.pnr if entry.ticket else '—'),
+            ('Description', entry.description),
+            ('Status', entry.get_status_display()),
+        ]
+        buf = payment_slip_pdf('FinTick', slip_no, fields, f'{entry.amount_pkr:,.2f}')
+
+        response = HttpResponse(buf.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="slip_{entry.id.hex[:8]}.pdf"'
         return response

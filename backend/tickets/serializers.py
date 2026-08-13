@@ -10,7 +10,7 @@ class TicketSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ticket
         fields = [
-            'id', 'customer', 'customer_name', 'vendor', 'vendor_name',
+            'id', 'ticket_type', 'customer', 'customer_name', 'vendor', 'vendor_name',
             'passenger_name', 'passport_no', 'date_of_birth',
             'passport_expiry', 'gender', 'pnr', 'flight_date', 'airline',
             'vendor_cost_pkr', 'ticket_price_pkr', 'profit_pkr',
