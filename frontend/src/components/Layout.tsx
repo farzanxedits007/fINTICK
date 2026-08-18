@@ -18,8 +18,20 @@ export default function Layout() {
   const { user, logout, loadUser } = useAuthStore();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [logo, setLogo] = useState<string>(() => localStorage.getItem('company_logo') || '');
 
   useEffect(() => { loadUser(); }, []);
+
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'company_logo') setLogo(e.newValue || '');
+    };
+    window.addEventListener('storage', handleStorage);
+    const interval = setInterval(() => {
+      setLogo(localStorage.getItem('company_logo') || '');
+    }, 1000);
+    return () => { window.removeEventListener('storage', handleStorage); clearInterval(interval); };
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -27,7 +39,11 @@ export default function Layout() {
 
       <aside className={`fixed lg:static inset-y-0 left-0 z-30 w-64 bg-slate-900 text-white transform transition-transform duration-200 ${open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-slate-700">
-          <h1 className="text-xl font-bold text-emerald-400">FinTick</h1>
+          {logo ? (
+            <img src={logo} alt="Logo" className="h-8 max-w-[140px] object-contain" />
+          ) : (
+            <h1 className="text-xl font-bold text-emerald-400">FinTick</h1>
+          )}
           <button className="lg:hidden text-slate-400 hover:text-white" onClick={() => setOpen(false)}>
             <X size={20} />
           </button>

@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { customerAPI, vendorAPI, bankAPI } from '../services/api';
 import { Customer, Vendor, BankAccount } from '../types';
 import toast from 'react-hot-toast';
-import { Plus, X, Trash2, Pencil, Search, Users, Building2, Landmark } from 'lucide-react';
+import { Plus, X, Trash2, Pencil, Search, Users, Building2, Landmark, Settings, Upload } from 'lucide-react';
 
 export default function AdminPanelPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [banks, setBanks] = useState<BankAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'customers' | 'vendors' | 'banks'>('customers');
+  const [tab, setTab] = useState<'customers' | 'vendors' | 'banks' | 'settings'>('customers');
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
@@ -20,6 +20,7 @@ export default function AdminPanelPage() {
   const [custForm, setCustForm] = useState({ name: '', phone: '', email: '', city: '', address: '', notes: '' });
   const [vendForm, setVendForm] = useState({ name: '', company: '', phone: '', email: '', city: '', address: '', notes: '' });
   const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [logo, setLogo] = useState<string>(() => localStorage.getItem('company_logo') || '');
 
   const load = () => {
     setLoading(true);
@@ -146,6 +147,26 @@ export default function AdminPanelPage() {
 
   const isVendor = editing && 'company' in editing;
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error('Logo must be under 2MB'); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const result = ev.target?.result as string;
+      setLogo(result);
+      localStorage.setItem('company_logo', result);
+      toast.success('Logo saved!');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogo = () => {
+    setLogo('');
+    localStorage.removeItem('company_logo');
+    toast.success('Logo removed!');
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -172,6 +193,10 @@ export default function AdminPanelPage() {
         <button onClick={() => { setTab('banks'); setSearch(''); }}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition-colors ${tab === 'banks' ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
           <Landmark size={18} /> Bank Accounts ({banks.length})
+        </button>
+        <button onClick={() => setTab('settings')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-lg font-medium transition-colors ${tab === 'settings' ? 'bg-slate-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+          <Settings size={18} /> Settings
         </button>
       </div>
 
@@ -209,7 +234,34 @@ export default function AdminPanelPage() {
         </div>
       )}
 
-      {tab !== 'banks' && (
+      {tab === 'settings' && (
+        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg">
+          <h3 className="text-lg font-bold text-gray-900 mb-4">Logo Settings</h3>
+          <p className="text-sm text-gray-500 mb-4">Upload a logo to display in the navigation bar. Recommended size: 200x50px, max 2MB.</p>
+          <div className="flex items-center gap-6">
+            <div className="w-48 h-16 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center bg-gray-50 overflow-hidden">
+              {logo ? (
+                <img src={logo} alt="Logo" className="max-w-full max-h-full object-contain" />
+              ) : (
+                <span className="text-xs text-gray-400">No logo</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors cursor-pointer">
+                <Upload size={16} /> Upload Logo
+                <input type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+              </label>
+              {logo && (
+                <button onClick={handleRemoveLogo} className="flex items-center gap-2 border border-gray-300 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors">
+                  <Trash2 size={16} /> Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab !== 'banks' && tab !== 'settings' && (
         <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
           <div className="relative max-w-sm">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -218,7 +270,7 @@ export default function AdminPanelPage() {
         </div>
       )}
 
-      {tab !== 'banks' && (
+      {tab !== 'banks' && tab !== 'settings' && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
         <table className="w-full">
           <thead>
